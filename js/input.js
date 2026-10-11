@@ -174,10 +174,14 @@ export class Input {
       }
     }
     if (this.touch) {
-      const t = this.touch.state;
-      if (t.accel) out.throttle = 1;
-      if (t.brake) out.brake = 1;
-      if (t.left || t.right) out.steer = (t.right ? 1 : 0) - (t.left ? 1 : 0);
+      const t = this.touch.read();
+      if (t.active) {
+        out.throttle = Math.max(out.throttle, t.throttle);
+        out.brake = Math.max(out.brake, t.brake);
+        if (t.brake) out.throttle = 0;
+        if (t.steer !== 0 || t.analog) { out.steer = t.steer; out.analog = t.analog; }
+        out.touch = true;
+      }
     }
     return out;
   }

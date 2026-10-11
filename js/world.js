@@ -733,7 +733,7 @@ function buildLabels(group, landmarks, tops, ground) {
 }
 
 // ---------------------------------------------------------------- entry point
-export async function buildWorld({ track, proj, scenery, ground, city, night, maxAniso, onProgress }) {
+export async function buildWorld({ track, proj, scenery, ground, city, night, maxAniso, onProgress, lowPoly = false }) {
   const group = new THREE.Group();
   onProgress?.('Costruisco il circuito…', 0.03);
   const landmarks = scenery ? selectLandmarks(scenery.pois, track) : [];
@@ -747,7 +747,7 @@ export async function buildWorld({ track, proj, scenery, ground, city, night, ma
   onProgress?.('Ricostruisco edifici e monumenti…', 0.75);
   await new Promise((r) => setTimeout(r, 0));
   const bres = scenery ? buildBuildings(group, scenery, track, ground, circuit.exclusions, landmarks, night) : null;
-  const nt = scenery ? buildTrees(group, scenery, track, ground) : 0;
+  const nt = scenery ? buildTrees(group, scenery, track, ground, { lowPoly }) : 0;
   const labels = buildLabels(group, landmarks, bres?.landmarkTops, ground);
   onProgress?.('Pronto!', 1);
   const setNight = (on) => {

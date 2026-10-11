@@ -166,7 +166,7 @@ const RAIN_FS = `uniform float opacity; uniform vec3 color; varying float vA;
 void main() { gl_FragColor = vec4(color, vA * opacity); }`;
 
 export class RainStreaks {
-  constructor(count = 9000) {
+  constructor(count = matchMedia('(pointer: coarse)').matches ? 4500 : 9000) {
     const pos = new Float32Array(count * 6), seed = new Float32Array(count * 2), tip = new Float32Array(count * 2);
     const R = 38, H = 26;
     for (let i = 0; i < count; i++) {

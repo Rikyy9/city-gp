@@ -12,8 +12,9 @@ const range = (key, title, cur, min, max, step, fmt) => `
     <input type="range" data-range="${key}" min="${min}" max="${max}" step="${step}" value="${cur}" />
   </div>`;
 
-export function createOptions({ root, settings, save, input, onChange }) {
+export function createOptions({ root, settings, save, input, onChange, defaultTab }) {
   let tab = 'controls';
+  let opened = false;
   let capturing = null;
 
   const render = () => {
@@ -40,12 +41,35 @@ export function createOptions({ root, settings, save, input, onChange }) {
         ${range('padSmooth', 'Filtro sterzo', S.padSmooth, 0, 0.15, 0.01, (v) => (v < 0.005 ? 'off' : Math.round(v * 1000) + ' ms'))}
         ${range('trigDeadzone', 'Zona morta grilletti', S.trigDeadzone, 0, 0.3, 0.01, (v) => Math.round(v * 100) + '%')}
         ${range('rumble', 'Vibrazione', S.rumble, 0, 1, 0.05, (v) => Math.round(v * 100) + '%')}
-        <small class="help">Progressività alta = sterzo più dolce al centro, preciso nelle curve veloci. La vibrazione segue cordoli, slittamenti, bloccaggi e urti (grilletti vibranti sui controller che li supportano).</small>
-        ${seg('touch', { title: 'Comandi touch', items: [['auto', 'Automatici'], ['on', 'Sempre'], ['off', 'Mai']] }, S.touch)}`;
+        <small class="help">Progressività alta = sterzo più dolce al centro, preciso nelle curve veloci. La vibrazione segue cordoli, slittamenti, bloccaggi e urti (grilletti vibranti sui controller che li supportano).</small>`;
+    } else if (tab === 'touch') {
+      html += seg('touchScheme', { title: 'Sterzo', items: [['buttons', '◀ ▶ Pulsanti'], ['wheel', '↔ Volante'], ['tilt', '📱 Inclinazione']] }, S.touchScheme,
+        { buttons: 'Due pulsanti grandi a sinistra: tieni premuto per sterzare (come F1 Mobile Racing).',
+          wheel: 'Appoggia il pollice sinistro dove vuoi e trascinalo a destra o sinistra: sterzo graduale e preciso.',
+          tilt: 'Inclina il telefono come un volante (come Real Racing 3). Premi “Centra” per ricalibrare.' }[S.touchScheme]);
+      if (S.touchScheme === 'tilt') {
+        html += range('tiltSens', 'Sensibilità inclinazione', S.tiltSens, 0.6, 1.8, 0.05, (v) => Math.round(v * 100) + '%');
+        html += seg('tiltInvert', { title: 'Direzione inclinazione', items: [['off', 'Normale'], ['on', 'Invertita']] }, S.tiltInvert);
+      }
+      html += seg('autoAccel', { title: 'Acceleratore automatico', items: [['on', 'Sì'], ['off', 'No']] }, S.autoAccel,
+        'L’auto accelera da sola: tu pensi solo a sterzare e frenare.');
+      html += seg('brakeAssist', { title: 'Frenata assistita', items: [['off', 'No'], ['light', 'Leggera'], ['full', 'Completa']] }, S.brakeAssist,
+        'Frena da sola prima delle curve se arrivi troppo veloce. Completa = anche alza il piede in anticipo.');
+      html += seg('steerAssist', { title: 'Sterzo assistito', items: [['off', 'No'], ['on', 'Sì']] }, S.steerAssist,
+        'Ti aiuta a seguire la traiettoria ideale (puoi sempre correggere).');
+      html += '<div class="group-title">Aspetto dei comandi</div>';
+      html += seg('touchSize', { title: 'Dimensione pulsanti', items: [['s', 'Piccoli'], ['m', 'Medi'], ['l', 'Grandi']] }, S.touchSize);
+      html += range('touchOpacity', 'Opacità', S.touchOpacity, 0.25, 1, 0.05, (v) => Math.round(v * 100) + '%');
+      html += seg('lefty', { title: 'Disposizione', items: [['off', 'Sterzo a sinistra'], ['on', 'Sterzo a destra']] }, S.lefty);
+      html += seg('haptics', { title: 'Vibrazione del telefono', items: [['on', 'Sì'], ['off', 'No']] }, S.haptics,
+        'Vibra sui cordoli, negli urti e quando tocchi i pulsanti (non disponibile su iPhone).');
+      html += seg('touch', { title: 'Comandi touch', items: [['auto', 'Automatici'], ['on', 'Sempre'], ['off', 'Mai']] }, S.touch);
     } else if (tab === 'driving') {
       html += seg('model', { title: 'Modello di guida', items: [['arcade', 'Arcade'], ['sim', 'Simulazione']] }, S.model,
         S.model === 'arcade' ? 'La macchina va dove sterzi, tanta aderenza e muri morbidi. Consigliato.' : 'Gomme, trasferimento di carico e derapate realistiche.');
       if (S.model === 'sim') html += seg('assists', { title: 'Aiuti alla guida', items: [['high', 'Alti'], ['medium', 'Medi'], ['low', 'Bassi']] }, S.assists);
+      html += seg('brakeAssist', { title: 'Frenata assistita', items: [['off', 'No'], ['light', 'Leggera'], ['full', 'Completa']] }, S.brakeAssist);
+      html += seg('steerAssist', { title: 'Sterzo assistito', items: [['off', 'No'], ['on', 'Sì']] }, S.steerAssist);
       html += seg('line', { title: 'Traiettoria ideale', items: [['on', 'Visibile'], ['off', 'Nascosta']] }, S.line);
       html += seg('wear', { title: 'Usura gomme', items: [['off', 'Disattivata'], ['normal', 'Normale'], ['high', 'Alta']] }, S.wear,
         'Con le gomme consumate perdi aderenza: premi il tasto pit stop per cambiarle al prossimo passaggio.');
@@ -65,6 +89,8 @@ export function createOptions({ root, settings, save, input, onChange }) {
       html += range('fov', 'Campo visivo (FOV)', S.fov, -10, 15, 1, (v) => (v > 0 ? '+' : '') + v + '°');
       html += seg('shake', { title: 'Vibrazioni della telecamera', items: [['on', 'Sì'], ['off', 'No']] }, S.shake);
       html += seg('blur', { title: 'Effetto velocità (motion blur)', items: [['on', 'Sì'], ['off', 'No']] }, S.blur);
+      html += seg('fps', { title: 'Fotogrammi al secondo', items: [['60', '60 fps'], ['30', '30 fps (risparmio batteria)']] }, S.fps,
+        'Sui telefoni 30 fps scalda meno e fa durare di più la batteria.');
       html += seg('autoRes', { title: 'Risoluzione automatica', items: [['on', 'Sì'], ['off', 'No']] }, S.autoRes,
         'Abbassa un po’ la risoluzione se il gioco scende sotto i 45 fotogrammi al secondo.');
       html += seg('tod', { title: 'Orario', items: [['day', 'Giorno'], ['sunset', 'Tramonto'], ['night', 'Notte']] }, S.tod);
@@ -81,6 +107,7 @@ export function createOptions({ root, settings, save, input, onChange }) {
   };
 
   const set = (key, v) => {
+    if (key === 'fps') v = +v;
     if (key.startsWith('vol_')) settings.vol[key.slice(4)] = v;
     else settings[key] = v;
     save();
@@ -138,7 +165,7 @@ export function createOptions({ root, settings, save, input, onChange }) {
   });
 
   return {
-    open(t) { if (t) tab = t; render(); root.classList.remove('hidden'); },
+    open(t) { if (t) tab = t; else if (!opened && defaultTab) tab = defaultTab; opened = true; render(); root.classList.remove('hidden'); },
     close() { capturing = null; input.capture = null; root.classList.add('hidden'); },
     get isOpen() { return !root.classList.contains('hidden'); },
   };

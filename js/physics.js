@@ -447,9 +447,9 @@ export function resolveCarCollisions(cars) {
           const v = -rel;
           if (v > 3) {
             const sideOf = (C, x, z) => ((x - C.x) * Math.cos(C.h) - (z - C.z) * Math.sin(C.h) > 0 ? 1 : -1);
-            if (ia === 0 && ib === 1) A.addDamage(v + 3, 1, sideOf(A, pb[0], pb[1]));
-            else if (ib === 0 && ia === 1) B.addDamage(v + 3, 1, sideOf(B, pa[0], pa[1]));
-            else { A.addDamage(v + 2, 0.2, sideOf(A, pb[0], pb[1])); B.addDamage(v + 2, 0.2, sideOf(B, pa[0], pa[1])); }
+            if (ia === 0 && ib === 1) A.addDamage(v + 1, 1, sideOf(A, pb[0], pb[1]));
+            else if (ib === 0 && ia === 1) B.addDamage(v + 1, 1, sideOf(B, pa[0], pa[1]));
+            else { A.addDamage(v, 0.2, sideOf(A, pb[0], pb[1])); B.addDamage(v, 0.2, sideOf(B, pa[0], pa[1])); }
           }
         }
       }

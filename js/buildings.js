@@ -412,7 +412,7 @@ export function buildBuildings(group, sc, track, ground, exclusions, landmarks, 
   return { kept, setNight, landmarkTops };
 }
 
-export function buildTrees(group, sc, track, ground) {
+export function buildTrees(group, sc, track, ground, { lowPoly = false } = {}) {
   const pts = [];
   const clear = track.wallOff + 2;
   const add = (x, z, seed) => {
@@ -445,29 +445,45 @@ export function buildTrees(group, sc, track, ground) {
     }
   }
   if (!pts.length) return 0;
-  // clustered crown: three blobs merged into one geometry
-  const blobs = [[0, 0, 0, 1], [0.55, -0.15, 0.2, 0.7], [-0.45, -0.1, -0.35, 0.75], [0.1, 0.45, -0.1, 0.65]].map(([x, y, z, r]) => {
-    const g = new THREE.IcosahedronGeometry(r, 1);
-    g.translate(x, y, z);
-    return g;
-  });
+  // clustered crown: blobs merged into one geometry (fewer facets on phones / lower presets)
+  const detail = lowPoly ? 0 : 1;
+  const blobs = (lowPoly ? [[0, 0, 0, 1], [0.5, -0.1, 0.2, 0.72], [-0.45, 0.05, -0.3, 0.75]] : [[0, 0, 0, 1], [0.55, -0.15, 0.2, 0.7], [-0.45, -0.1, -0.35, 0.75], [0.1, 0.45, -0.1, 0.65]])
+    .map(([x, y, z, r]) => {
+      const g = new THREE.IcosahedronGeometry(r, detail);
+      g.translate(x, y, z);
+      return g;
+    });
   const crownGeo = mergeGeometries(blobs);
   const trunkGeo = new THREE.CylinderGeometry(0.15, 0.22, 1, 5);
   trunkGeo.translate(0, 0.5, 0);
-  const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: 0x4d7a3a, roughness: 0.95, flatShading: true }), pts.length);
-  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: 0x5a4330, roughness: 1 }), pts.length);
+  const crownMat = new THREE.MeshStandardMaterial({ color: 0x4d7a3a, roughness: 0.95, flatShading: true });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4330, roughness: 1 });
+  // one instanced mesh per 250 m cell, so cells outside the view (and the shadow camera) are culled
+  const CELL = 250;
+  const cells = new Map();
+  for (const t of pts) {
+    const k = `${Math.floor(t[0] / CELL)},${Math.floor(t[1] / CELL)}`;
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k).push(t);
+  }
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
-  pts.forEach(([x, z, r], k) => {
-    const y = ground(x, z);
-    const s = 2.2 + r * 2.5, th = 2.5 + r * 2;
-    m4.compose(new THREE.Vector3(x, y + th + s * 0.75, z), q, new THREE.Vector3(s, s * 1.15, s));
-    crowns.setMatrixAt(k, m4);
-    c.setHSL(0.25 + r * 0.08, 0.38, 0.28 + r * 0.1);
-    crowns.setColorAt(k, c);
-    m4.compose(new THREE.Vector3(x, y - 0.3, z), q, new THREE.Vector3(1, th + s * 0.4, 1));
-    trunks.setMatrixAt(k, m4);
-  });
-  crowns.castShadow = true; trunks.castShadow = true;
-  group.add(crowns, trunks);
+  for (const list of cells.values()) {
+    const crowns = new THREE.InstancedMesh(crownGeo, crownMat, list.length);
+    const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, list.length);
+    list.forEach(([x, z, r], k) => {
+      const y = ground(x, z);
+      const sc = 2.2 + r * 2.5, th = 2.5 + r * 2;
+      m4.compose(new THREE.Vector3(x, y + th + sc * 0.75, z), q, new THREE.Vector3(sc, sc * 1.15, sc));
+      crowns.setMatrixAt(k, m4);
+      c.setHSL(0.25 + r * 0.08, 0.38, 0.28 + r * 0.1);
+      crowns.setColorAt(k, c);
+      m4.compose(new THREE.Vector3(x, y - 0.3, z), q, new THREE.Vector3(1, th + sc * 0.4, 1));
+      trunks.setMatrixAt(k, m4);
+    });
+    crowns.computeBoundingSphere();
+    trunks.computeBoundingSphere();
+    crowns.castShadow = true; trunks.castShadow = !lowPoly;
+    group.add(crowns, trunks);
+  }
   return pts.length;
 }

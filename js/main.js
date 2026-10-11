@@ -22,7 +22,7 @@ import { makeProjection, bboxAround, bboxOfXZ, hashString, mulberry32 } from './
 import { fetchRoads, fetchScenery, searchPlaces, reverseCity } from './osm.js';
 import { buildGraph, generateCandidates, orientTrack, resampleClosed } from './trackgen.js';
 import { Track } from './track.js';
-import { Car, resolveCarCollisions, updateDraft } from './physics.js';
+import { Car, resolveCarCollisions, updateDraft, brakeDecel } from './physics.js';
 import { Weather, CloudDome, RainStreaks } from './weather.js';
 import { Radio, sayGap, posWord } from './radio.js';
 import { lbGet, lbSubmit, lbBestSectors, lbSaveSector, lbTouch, lbList, lbClear } from './records.js';
@@ -108,6 +108,9 @@ const S = {
     weather: 'dry', damage: 'on', radio: 'voice', commentary: 'on',
     sens: 1, padLayout: 'triggers', touch: 'auto', bindings: defaultBindings(),
     padDeadzone: 0.08, padCurve: 1.5, padSmooth: 0.04, trigDeadzone: 0.04, rumble: 1,
+    // touch controls & driving aids (mobile defaults follow the big mobile racers: auto-gas + brake assist)
+    touchScheme: 'buttons', touchSize: 'm', touchOpacity: 0.6, lefty: 'off', haptics: 'on', tiltSens: 1, tiltInvert: 'off',
+    autoAccel: 'on', brakeAssist: isTouchDevice() ? 'light' : 'off', steerAssist: 'off', fps: 60,
     vol: { master: 0.8, engine: 0.8, fx: 0.8, opponents: 0.6, radio: 0.9 },
   }, store.get('settings', {})),
 };
@@ -179,6 +182,12 @@ const QUALITY = {
   medium: { pr: Math.min(window.devicePixelRatio, 1.5), samples: 2, shadow: 2048, post: true },
   low: { pr: 1, samples: 0, shadow: 1024, post: false },
 };
+// phones and tablets: smaller shadow maps (the GPU is shared with a hot, battery-powered SoC)
+if (isTouchDevice()) {
+  QUALITY.high = { pr: Math.min(window.devicePixelRatio, 2), samples: 2, shadow: 2048, post: true };
+  QUALITY.medium = { pr: Math.min(window.devicePixelRatio, 1.5), samples: 2, shadow: 1024, post: true };
+  QUALITY.low = { pr: Math.min(window.devicePixelRatio, 1), samples: 0, shadow: 512, post: false };
+}
 const post = { composer: null, bloom: null, resScale: 1 };
 function applyQuality(q) {
   const Q = QUALITY[q] || QUALITY.high;
@@ -396,10 +405,15 @@ function applyControlSettings() {
   input.rumbleStrength = st.rumble;
   audio.setVolumes(st.vol);
   radio.configure({ mode: st.radio, commentary: st.commentary === 'on', volume: st.vol.radio });
+  document.body.classList.toggle('lefty-on', st.lefty === 'on');
+  touch.configure({
+    scheme: st.touchScheme, autoAccel: st.autoAccel === 'on', size: st.touchSize, opacity: st.touchOpacity,
+    lefty: st.lefty === 'on', haptics: st.haptics === 'on', tiltSens: st.tiltSens, tiltInvert: st.tiltInvert === 'on',
+  });
 }
 input.onPadChange = (p) => toast(p ? '🎮 Gamepad collegato' : 'Gamepad scollegato', 2000);
-applyControlSettings();
 const touch = new TouchControls($('#touch'), input);
+applyControlSettings();
 const touchWanted = () => S.settings.touch === 'on' || (S.settings.touch === 'auto' && isTouchDevice());
 
 window.addEventListener('resize', () => {
@@ -432,7 +446,7 @@ function setScreen(name) {
   show('#screen-pause', false);
   show('#screen-results', false);
   $('#game').style.visibility = name === 'map' ? 'hidden' : 'visible';
-  if (name === 'map') { audio.silence(); setTimeout(() => map.invalidateSize(), 50); }
+  if (name === 'map') { audio.silence(); keepScreenOn(false); setTimeout(() => map.invalidateSize(), 50); }
 }
 const fmtTime = (t) => {
   if (!Number.isFinite(t)) return '–';
@@ -886,6 +900,7 @@ async function prepare(def) {
     clearRace();
     const world = await buildWorld({
       track, proj, scenery, ground, city: def.city || 'Città', night: S.settings.tod === 'night', maxAniso: MAX_ANISO,
+      lowPoly: S.settings.quality !== 'high' || isTouchDevice(),
       onProgress: (m, f) => setLoad(m, 0.08 + 0.84 * f),
     });
     scene.add(world.group);
@@ -1165,7 +1180,12 @@ function startRace() {
   if (!S.race || S.race.phase !== 'grid') createRace();
   audio.ensure();
   radio.stop();
-  if (touchWanted()) goFullscreen();
+  if (touchWanted()) {
+    goFullscreen();
+    if (S.settings.touchScheme === 'tilt') TouchControls.requestTiltPermission();
+    showTouchTutorial();
+  }
+  keepScreenOn(true);
   setScreen('race');
   S.paused = false;
   const R = S.race;
@@ -1422,7 +1442,7 @@ function drsLogic(car) {
 
 function updateRace(dt) {
   const R = S.race, T = S.track;
-  const inp = input.read(dt);
+  const inp = applyAssists(input.read(dt), R.player);
   if (input.pressed('pause')) { pause(true); return; }
   if (input.pressed('camera')) S.camMode = (S.camMode + 1) % 3;
   if (input.pressed('mute')) { audio.setMuted(!audio.muted); toast(audio.muted ? 'Audio disattivato' : 'Audio attivo', 1200); }
@@ -1563,6 +1583,12 @@ function updateRace(dt) {
   const p = R.player;
   if (p.wallHit > 1.5) { audio.impact(p.wallHit); input.rumble(Math.min(1, p.wallHit / 10), 0.5 + Math.min(0.5, p.damageHit * 2), 220); }
   input.feedback(p, started);
+  // phone vibration (Android): impacts and kerbs
+  if (touch.haptics && document.body.classList.contains('touch-on') && navigator.userActivation?.hasBeenActive !== false) {
+    const now = performance.now();
+    if (p.wallHit > 2.5 && now > (S.buzzAt || 0)) { navigator.vibrate?.(Math.min(90, 20 + p.wallHit * 5)); S.buzzAt = now + 250; }
+    else if (p.kerb > 0.3 && now > (S.buzzAt || 0)) { navigator.vibrate?.(12); S.buzzAt = now + 110; }
+  }
   audio.update(p, true, camera, R.cars, W.wet, W.rain);
   S.fx?.update(dt, R.cars, p, p.dynamic ? 0.88 : 0.99, { wet: W.wet, night: S.settings.tod === 'night', models: R.models });
   if (S.world.marshals) updateMarshals(S.world.marshals, dt, R.t, T, R.incidents.filter((i) => R.t - i.t < 10).map((i) => i.s));
@@ -1574,6 +1600,85 @@ function updateRace(dt) {
   updateLabels();
   updateHud();
   updatePlaceInfo();
+}
+
+// ---------------------------------------------------------------- driving aids (mobile-style)
+// brake assist (Real Racing style): brakes for the corner ahead when you arrive too fast;
+// steering assist (Mario Kart style): gently pulls the car towards the racing line.
+const clampN = (v, a, b) => (v < a ? a : v > b ? b : v);
+function applyAssists(inp, p) {
+  const st = S.settings, T = S.track, R = S.race;
+  p.assistBraking = false;
+  if (!R || !started0(R) || p.pit.phase || p.finished) return inp;
+  const out = { ...inp };
+  const v = Math.max(0, p.vf);
+  if (st.brakeAssist !== 'off' && v > 10 && p.wrongWay === 0) {
+    const full = st.brakeAssist === 'full';
+    // the speed profile assumes an undamaged car on the best tyres: scale to this car's real grip
+    const gripK = Math.sqrt(Math.min(1, p.damageGrip(0.12, 0.08) * p.weatherGrip / (T.weatherGrip || 1)));
+    const scale = (p.dynamic ? 0.9 : 1) * (full ? 0.92 : 0.97) * gripK;
+    let need = 0;
+    for (let k = 2; k < 170; k += 2) {
+      const i = T.wrap(p.idx + k);
+      const vt = T.speedProfile[i] * scale;
+      if (v <= vt) continue;
+      const n = (v * v - vt * vt) / (2 * k * T.ds);
+      if (n > need) need = n;
+    }
+    const dec = brakeDecel(v) * 0.8 * Math.min(1, p.weatherGrip * 1.04);
+    if (need > dec * (full ? 0.78 : 0.88)) {
+      out.brake = Math.max(out.brake, clampN(0.45 + (need / dec - 0.85) * 2, 0.35, 1));
+      out.throttle = 0;
+      p.assistBraking = true;
+    } else if (full && need > 4 && !inp.brake) out.throttle = Math.min(out.throttle, 0.35);
+    // through the corner itself: no throttle above the cornering speed, brake if well above it
+    const here = Math.min(T.speedProfile[p.idx], T.speedProfile[T.wrap(p.idx + 3)]) * scale;
+    if (v > here + 0.5) {
+      out.throttle = 0;
+      if (v > here * 1.05) { out.brake = Math.max(out.brake, 0.5); p.assistBraking = true; }
+    }
+    // don't run into the back of a slower car in the same line
+    for (const o of R.cars) {
+      if (o === p) continue;
+      const gap = o.progress - p.progress, closing = p.vf - o.vf;
+      if (gap > 2 && gap < 40 && Math.abs(o.d - p.d) < 2.3 && closing > 0 && gap < 5 + closing * 1.1) {
+        out.brake = Math.max(out.brake, clampN(closing / 12, 0.3, 1));
+        out.throttle = 0;
+        p.assistBraking = true;
+      }
+    }
+  }
+  if (st.steerAssist === 'on' && v > 4) {
+    // pure pursuit towards the racing line (same geometry the AI uses)
+    const look = 5 + v * 0.22;
+    const ia = T.wrap(p.idx + Math.round(look / T.ds));
+    let off = T.raceOffset[ia];
+    // a slower car ahead on the line: aim for the side with more room (the player can override)
+    const lim = T.halfW - 1.3;
+    for (const o of R.cars) {
+      const gap = o.progress - p.progress;
+      if (o === p || gap < 2 || gap > 35 || Math.abs(o.d - off) > 2.6 || o.vf > p.vf + 1) continue;
+      const side = o.d <= 0 ? 1 : -1; // pass on the side with more track
+      off = clampN(o.d + side * 3.4, -lim, lim);
+    }
+    // side by side: keep a car's width
+    for (const o of R.cars) {
+      if (o === p || Math.abs(o.progress - p.progress) > 5) continue;
+      const dd = p.d - o.d;
+      if (Math.abs(dd) < 2.8) off = clampN(p.d + Math.sign(dd || 1) * (2.9 - Math.abs(dd)), -lim, lim);
+    }
+    const dx = T.P[2 * ia] + T.N[2 * ia] * off - p.x, dz = T.P[2 * ia + 1] + T.N[2 * ia + 1] * off - p.z;
+    const sinH = Math.sin(p.h), cosH = Math.cos(p.h);
+    const alpha = Math.atan2(-dx * cosH + dz * sinH, dx * sinH + dz * cosH);
+    const delta = Math.atan((2 * 3.6 * Math.sin(alpha)) / Math.max(3, Math.hypot(dx, dz)));
+    const maxAngle = p.dynamic ? (p.dMax || 0.42) : 0.42 / (1 + v / 22);
+    const assist = clampN(delta / maxAngle, -1, 1);
+    const human = inp.steer;
+    // hands off = the car follows the line; any input from the player takes over proportionally
+    out.steer = clampN(human + assist * (1 - Math.abs(human)), -1, 1);
+    out.analog = true;
+  }
+  return out;
 }
 
 // weather → sky, fog, wet asphalt
@@ -1883,6 +1988,10 @@ function updateHud() {
     wx.querySelector('span').textContent = W.wet < 0.12 ? 'Asciutta' : W.wet < 0.35 ? 'Umida' : W.wet < 0.7 ? 'Bagnata' : 'Molto bagnata';
   }
   $('#flag-pit').classList.toggle('on', p.pit.requested && !p.pit.phase);
+  if (document.body.classList.contains('touch-on')) {
+    touch.setFlags({ drsAvail: p.drsAvailable && p.inDrsZone, drsOpen: p.drsOpen, ers: p.ersOn, battery: p.battery, pit: p.pit.requested && !p.pit.phase });
+    $('#touch .tc-brake').classList.toggle('assist', !!p.assistBraking);
+  }
   const ps = $('#hud-pitstop');
   ps.classList.toggle('hidden', p.pit.phase !== 'stop');
   if (p.pit.phase === 'stop') {
@@ -2043,7 +2152,13 @@ const options = createOptions({
   settings: S.settings,
   save: () => saveSettings(),
   input,
+  defaultTab: isTouchDevice() ? 'touch' : 'controls',
   onChange: (key, v) => {
+    if (['touchScheme', 'autoAccel', 'touchSize', 'touchOpacity', 'lefty', 'haptics', 'tiltSens', 'tiltInvert'].includes(key)) applyControlSettings();
+    if (key === 'touchScheme' && v === 'tilt') {
+      TouchControls.requestTiltPermission().then((ok) => { if (!ok) toast('Il browser non permette di leggere l’inclinazione: usa Pulsanti o Volante', 3500); });
+    }
+    if (key === 'haptics' && v === 'on') navigator.vibrate?.(30);
     if (['bindings', 'padLayout', 'sens', 'padDeadzone', 'padCurve', 'padSmooth', 'trigDeadzone', 'rumble', 'radio', 'commentary'].includes(key) || key.startsWith('vol_')) applyControlSettings();
     if (key === 'rumble') input.rumble(0.6, 0.6, 250);
     if (key === 'autoRes' && v === 'off') setResScale(1);
@@ -2056,7 +2171,7 @@ const options = createOptions({
     if (S.screen === 'setup') syncSetupControls();
   },
 });
-document.querySelectorAll('[data-open-options]').forEach((b) => b.addEventListener('click', () => options.open()));
+document.querySelectorAll('[data-open-options]').forEach((b) => b.addEventListener('click', () => options.open(b.dataset.openOptions || undefined)));
 $('#btn-opt-close').addEventListener('click', () => options.close());
 
 // ---------------------------------------------------------------- pause & results
@@ -2321,6 +2436,8 @@ function updatePlaceInfo() {
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
+  // battery saver: draw every other frame on 60 Hz screens
+  if (S.settings.fps === 30 && now - last < 1000 / 30 - 4) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (S.screen === 'replay' && S.replay) {
@@ -2411,6 +2528,52 @@ function reportError(err) {
 window.addEventListener('error', (e) => reportError(e.error || e.message));
 window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
+// keep the screen awake while racing (phones dim after ~30 s without touches)
+let wakeLock = null;
+async function keepScreenOn(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.screen === 'race') keepScreenOn(true); });
+
+// first race on a touch screen: show where the controls are (like the mobile racers' first-run hints)
+function showTouchTutorial() {
+  if (store.get('touchTutorial', 0) >= 2) return;
+  store.set('touchTutorial', store.get('touchTutorial', 0) + 1);
+  const el = $('#touch-tutorial');
+  const st = S.settings;
+  el.querySelector('.tt-steer').textContent = { buttons: 'Tieni premuto ◀ ▶ per sterzare', wheel: 'Trascina il pollice per sterzare', tilt: 'Inclina il telefono per sterzare' }[st.touchScheme] || '';
+  el.querySelector('.tt-pedal').textContent = st.autoAccel === 'on' ? 'Accelera da solo · tieni FRENO per frenare' : 'GAS per accelerare · FRENO per frenare';
+  el.classList.toggle('lefty', st.lefty === 'on');
+  show('#touch-tutorial');
+  const hide = () => show('#touch-tutorial', false);
+  el.onclick = hide;
+  setTimeout(hide, 6500);
+}
+
+// portrait during a race on a phone: pause until the phone is rotated back
+window.addEventListener('resize', () => {
+  if (S.screen === 'race' && S.race && !S.paused && touchWanted() && window.innerHeight > window.innerWidth * 1.1) pause(true);
+});
+
+// "install the app": Android/Chrome gives an install prompt, iPhone needs Share → Add to Home Screen
+let installEvent = null;
+const standalone = () => window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; show('#btn-install', !standalone()); });
+if (/iP(hone|ad|od)/.test(navigator.userAgent) && !standalone()) show('#btn-install');
+$('#btn-install').addEventListener('click', async () => {
+  if (installEvent) {
+    installEvent.prompt();
+    const r = await installEvent.userChoice.catch(() => null);
+    if (r?.outcome === 'accepted') show('#btn-install', false);
+    installEvent = null;
+  } else toast('Su iPhone: tocca Condividi ⬆︎ e poi “Aggiungi alla schermata Home”. Il gioco si aprirà a schermo intero.', 6000);
+});
+
 // fullscreen (and landscape on phones) when racing on touch devices
 function goFullscreen() {
   const el = document.documentElement;
@@ -2446,11 +2609,12 @@ setScreen('map');
 window.__citygp = {
   S, scene, camera, renderer, map, editor,
   // advance the game without requestAnimationFrame (useful when the tab is in the background)
-  tick(n = 60, dt = 1 / 60) {
+  tick(n = 60, dt = 1 / 60, onStep = null) {
     for (let k = 0; k < n; k++) {
       if (S.screen === 'race' && S.race && !S.paused) updateRace(dt);
       else if (S.screen === 'setup') updateFlyover(dt);
       env.update(dt, camera);
+      if (onStep && onStep() === false) break;
     }
     renderFrame();
   },

@@ -112,6 +112,7 @@
       </div>
 
       <footer class="credits">
+        <button id="btn-install" class="btn wide install hidden">📲 Installa l'app (gioca a schermo intero)</button>
         <div class="row gap"><button class="btn ghost small grow" data-open-info>ℹ Info, crediti e privacy</button><button class="btn ghost small" data-fullscreen title="Schermo intero">⛶</button></div>
         Dati © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
         Immagini satellitari © Esri, Maxar, Earthstar Geographics · Elevazione: AWS Terrain Tiles (Mapzen)
@@ -269,6 +270,10 @@
         <button class="btn ghost" data-open-options title="Opzioni">⚙</button>
         <button id="btn-start" class="btn primary grow go">VIA!</button>
       </div>
+      <div class="touch-help">
+        <span>📱 Comandi touch</span>
+        <button class="btn ghost small" data-open-options="touch">Sterzo, aiuti e pulsanti ⚙</button>
+      </div>
       <div class="keys">
         <div><kbd>↑</kbd><kbd>W</kbd> accelera</div>
         <div><kbd>↓</kbd><kbd>S</kbd> frena / retro</div>
@@ -336,6 +341,11 @@
     <div class="hud-hint"><kbd>Esc</kbd> pausa · <kbd>Shift</kbd> ERS · <kbd>E</kbd> DRS · <kbd>P</kbd> box · <kbd>⌫</kbd> flashback</div>
   </div>
   <div id="touch" class="touch hidden"></div>
+  <div id="touch-tutorial" class="touch-tutorial hidden">
+    <div class="tt-left"><b>Sterzo</b><span class="tt-steer"></span></div>
+    <div class="tt-right"><b>Pedali</b><span class="tt-pedal"></span></div>
+    <small>Tocca per chiudere · cambia comandi in ❚❚ → Opzioni</small>
+  </div>
 
   <!-- ============ REPLAY ============ -->
   <div id="replay-bar" class="replay-bar hidden">
@@ -380,6 +390,7 @@
     <div class="menu options-menu">
       <div class="opt-head"><h2>Opzioni</h2><button id="btn-opt-close" class="btn ghost small">Chiudi ✕</button></div>
       <div class="tabs" id="opt-tabs">
+        <button data-tab="touch">Touch</button>
         <button data-tab="controls" class="on">Comandi</button>
         <button data-tab="driving">Guida</button>
         <button data-tab="graphics">Grafica</button>

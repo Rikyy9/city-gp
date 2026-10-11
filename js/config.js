@@ -6,9 +6,8 @@
 export const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
 ];
+// (overpass.private.coffee and overpass.kumi.systems were removed: they no longer allow browser requests — CORS)
 
 // city search and reverse geocoding (usage policy: max 1 request/second, no autocomplete)
 export const NOMINATIM = 'https://nominatim.openstreetmap.org';
