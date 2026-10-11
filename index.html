@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>City GP — corri sulle strade della tua città</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="description" content="Gioco di corse nel browser: scegli una città, City GP disegna un circuito cittadino sulle strade vere e ricostruisce edifici, monumenti e rilievi in 3D. Gratis, senza installazioni." />
+  <meta name="theme-color" content="#0b0c10" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="City GP" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="City GP — corri sulle strade della tua città" />
+  <meta property="og:description" content="Scegli una città: il gioco crea un circuito cittadino sulle strade vere, con edifici e monumenti in 3D." />
+  <meta property="og:url" content="https://rikyy9.github.io/city-gp/" />
+  <meta property="og:image" content="https://rikyy9.github.io/city-gp/og-image.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <noscript><div class="noscript">City GP ha bisogno di JavaScript attivo per funzionare.</div></noscript>
+  <div id="game"></div>
+
+  <!-- ============ MAP / TRACK GENERATOR ============ -->
+  <section id="screen-map" class="screen">
+    <div id="map"></div>
+    <aside id="panel">
+      <header class="brand">
+        <div class="brand-row"><div class="logo"><span>CITY</span><b>GP</b></div><button class="btn ghost small" data-open-options>⚙ Opzioni</button></div>
+        <p>Circuiti cittadini generati dalle strade vere</p>
+        <ol class="stepper" id="stepper">
+          <li class="on"><i>1</i>Città</li>
+          <li><i>2</i>Circuito</li>
+          <li><i>3</i>Gara</li>
+        </ol>
+      </header>
+
+      <div class="block">
+        <h3>Dove vuoi correre?</h3>
+        <form id="search-form" class="search">
+          <input id="search-input" type="text" placeholder="Cerca una città… (es. Monza)" autocomplete="off" />
+          <button type="submit" class="btn small">Cerca</button>
+        </form>
+        <ul id="search-results" class="results hidden"></ul>
+        <p class="hint">Oppure clicca sulla mappa per scegliere il centro della zona.</p>
+      </div>
+
+      <div class="block">
+        <label class="row">
+          <span class="label">Lunghezza circuito</span>
+          <output id="len-out">4,5 km</output>
+        </label>
+        <input id="len-range" type="range" min="2500" max="7000" step="250" value="4500" />
+        <button id="btn-generate" class="btn primary wide">Genera circuiti</button>
+        <div id="gen-status" class="status hidden">
+          <div class="bar"><i></i></div>
+          <span></span>
+        </div>
+      </div>
+
+      <div class="block" id="editor-block">
+        <h3>Oppure disegnalo tu</h3>
+        <button id="btn-editor" class="btn wide">✏️ Disegna il tuo circuito</button>
+        <div id="editor-tools" class="hidden">
+          <p id="editor-status" class="hint"></p>
+          <div class="row gap">
+            <button id="btn-ed-undo" class="btn ghost grow">↶ Annulla punto</button>
+            <button id="btn-ed-exit" class="btn ghost grow">Esci</button>
+          </div>
+          <button id="btn-ed-close" class="btn primary wide">Chiudi circuito ✓</button>
+        </div>
+      </div>
+
+      <div id="cands" class="block hidden">
+        <h3>Scegli il circuito</h3>
+        <div id="cand-list"></div>
+        <div class="row gap">
+          <button id="btn-reverse" class="btn ghost">⇄ Inverti senso</button>
+          <button id="btn-regen" class="btn ghost">↻ Altri circuiti</button>
+        </div>
+        <button id="btn-prepare" class="btn primary wide" disabled>Prepara la gara →</button>
+      </div>
+
+      <div class="block" id="champ-block">
+        <h3>🏆 Campionato</h3>
+        <div id="champ-new">
+          <input id="champ-cities" class="text-input" type="text" placeholder="Città, separate da virgola" value="Monza, Genova, Torino" />
+          <p class="hint">Una gara per città, punti stile Gran Premio (25-18-15-12-10-8-6-4-2-1). Usa avversari, difficoltà e giri scelti nell'impostazione gara.</p>
+          <button id="btn-champ-start" class="btn wide">Avvia campionato</button>
+        </div>
+        <div id="champ-active" class="hidden">
+          <p id="champ-info" class="hint"></p>
+          <div id="champ-table" class="champ-table"></div>
+          <button id="btn-champ-next" class="btn primary wide">Corri il prossimo round</button>
+          <button id="btn-champ-quit" class="btn ghost wide">Abbandona campionato</button>
+        </div>
+      </div>
+
+      <div id="saved" class="block hidden">
+        <h3>Circuiti salvati</h3>
+        <div id="saved-list"></div>
+      </div>
+
+      <div id="records" class="block hidden">
+        <h3>🏅 I tuoi record</h3>
+        <div id="records-list"></div>
+      </div>
+
+      <footer class="credits">
+        <div class="row gap"><button class="btn ghost small grow" data-open-info>ℹ Info, crediti e privacy</button><button class="btn ghost small" data-fullscreen title="Schermo intero">⛶</button></div>
+        Dati © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
+        Immagini satellitari © Esri, Maxar, Earthstar Geographics · Elevazione: AWS Terrain Tiles (Mapzen)
+      </footer>
+    </aside>
+  </section>
+
+  <!-- ============ LOADING ============ -->
+  <section id="screen-loading" class="screen loading hidden">
+    <div class="loading-box">
+      <div class="logo big"><span>CITY</span><b>GP</b></div>
+      <canvas id="load-track" width="520" height="320"></canvas>
+      <h2 id="load-name"></h2>
+      <p id="load-msg">Caricamento…</p>
+      <div class="bar"><i id="load-bar"></i></div>
+      <p class="tip" id="load-tip"></p>
+    </div>
+  </section>
+
+  <!-- ============ RACE SETUP ============ -->
+  <section id="screen-setup" class="screen hidden">
+    <div id="intro-caption" class="intro-caption"><small></small><b></b></div>
+    <div class="setup-card">
+      <button id="btn-back-map" class="link">← Cambia circuito</button>
+      <h2 id="setup-name">Circuito</h2>
+      <p id="setup-stats" class="muted"></p>
+      <p id="setup-champ" class="champ-banner hidden"></p>
+      <p id="setup-record" class="record"></p>
+      <div class="elev">
+        <canvas id="setup-elev" width="680" height="110"></canvas>
+        <small id="setup-elev-text"></small>
+      </div>
+
+      <div class="group-title">Gara</div>
+      <div class="field">
+        <span>Modalità</span>
+        <div class="seg" data-key="mode">
+          <button data-v="race" class="on">Gara</button>
+          <button data-v="tt">Giro veloce</button>
+        </div>
+      </div>
+      <div class="field race-only">
+        <span>Avversari</span>
+        <div class="seg" data-key="opponents">
+          <button data-v="3">3</button>
+          <button data-v="5" class="on">5</button>
+          <button data-v="7">7</button>
+          <button data-v="9">9</button>
+        </div>
+      </div>
+      <div class="field race-only">
+        <span>Difficoltà avversari</span>
+        <div class="seg" data-key="difficulty">
+          <button data-v="easy">Facile</button>
+          <button data-v="medium" class="on">Media</button>
+          <button data-v="hard">Difficile</button>
+        </div>
+      </div>
+      <div class="field race-only">
+        <span>Qualifiche</span>
+        <div class="seg" data-key="quali">
+          <button data-v="on" class="on">Sì, un giro</button>
+          <button data-v="off">No</button>
+        </div>
+      </div>
+      <div class="field race-only">
+        <span>Difficoltà adattiva</span>
+        <div class="seg" data-key="adaptive">
+          <button data-v="on" class="on">Sì</button>
+          <button data-v="off">No</button>
+        </div>
+      </div>
+      <div class="field race-only">
+        <span>Giri</span>
+        <div class="seg" data-key="laps">
+          <button data-v="1">1</button>
+          <button data-v="3" class="on">3</button>
+          <button data-v="5">5</button>
+          <button data-v="10">10</button>
+        </div>
+      </div>
+
+      <div class="group-title">Guida</div>
+      <div class="field">
+        <span>Modello di guida</span>
+        <div class="seg" data-key="model">
+          <button data-v="arcade" class="on">Arcade</button>
+          <button data-v="sim">Simulazione</button>
+        </div>
+      </div>
+      <div class="field sim-only">
+        <span>Aiuti alla guida</span>
+        <div class="seg" data-key="assists">
+          <button data-v="high">Alti</button>
+          <button data-v="medium" class="on">Medi</button>
+          <button data-v="low">Bassi</button>
+        </div>
+        <small class="help" id="assist-help"></small>
+      </div>
+      <div class="field race-only">
+        <span>Usura gomme</span>
+        <div class="seg" data-key="wear">
+          <button data-v="off">No</button>
+          <button data-v="normal" class="on">Normale</button>
+          <button data-v="high">Alta</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>Danni</span>
+        <div class="seg" data-key="damage">
+          <button data-v="off">No</button>
+          <button data-v="visual">Estetici</button>
+          <button data-v="on" class="on">Realistici</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>Traiettoria ideale</span>
+        <div class="seg" data-key="line">
+          <button data-v="on" class="on">Visibile</button>
+          <button data-v="off">Nascosta</button>
+        </div>
+      </div>
+
+      <div class="group-title">Aspetto</div>
+      <div class="field">
+        <span>Meteo</span>
+        <div class="seg" data-key="weather">
+          <button data-v="dry" class="on">☀️ Sole</button>
+          <button data-v="wet">🌧 Pioggia</button>
+          <button data-v="variable">🌦 Variabile</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>Orario</span>
+        <div class="seg" data-key="tod">
+          <button data-v="day" class="on">Giorno</button>
+          <button data-v="sunset">Tramonto</button>
+          <button data-v="night">Notte</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>Qualità grafica</span>
+        <div class="seg" data-key="quality">
+          <button data-v="high" class="on">Alta</button>
+          <button data-v="medium">Media</button>
+          <button data-v="low">Bassa</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>Livrea</span>
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <div class="setup-actions">
+        <button id="btn-save" class="btn ghost">☆ Salva</button>
+        <button class="btn ghost" data-open-options title="Opzioni">⚙</button>
+        <button id="btn-start" class="btn primary grow go">VIA!</button>
+      </div>
+      <div class="keys">
+        <div><kbd>↑</kbd><kbd>W</kbd> accelera</div>
+        <div><kbd>↓</kbd><kbd>S</kbd> frena / retro</div>
+        <div><kbd>←</kbd><kbd>→</kbd> sterza</div>
+        <div><kbd>Shift</kbd><kbd>Q</kbd> boost ERS</div>
+        <div><kbd>E</kbd><kbd>Spazio</kbd> DRS</div>
+        <div><kbd>P</kbd> pit stop</div>
+        <div><kbd>⌫</kbd><kbd>F</kbd> flashback</div>
+        <div><kbd>C</kbd> visuale · <kbd>L</kbd> traiettoria</div>
+        <div><kbd>Esc</kbd> pausa · ⚙ cambia tasti</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div class="tower">
+      <div class="tower-head">
+        <span class="lap-label">GIRO</span><b id="hud-lap">1</b><span id="hud-lap-tot">/3</span><em id="hud-penalty" class="penalty hidden"></em>
+      </div>
+      <div id="hud-standings" class="standings"></div>
+    </div>
+    <div class="timing">
+      <div class="t main"><small>TEMPO</small><b id="hud-time">0:00.000</b></div>
+      <div class="sectors" id="hud-sectors"><i></i><i></i><i></i></div>
+      <div class="t"><small>ULTIMO</small><span id="hud-last">–</span></div>
+      <div class="t"><small>MIGLIORE</small><span id="hud-best">–</span></div>
+      <div class="t delta hidden" id="hud-delta-wrap"><small>DELTA</small><span id="hud-delta">–</span></div>
+      <div class="t wx hidden" id="hud-wx"><small>PISTA</small><span></span><i></i></div>
+    </div>
+    <canvas id="minimap" width="440" height="440"></canvas>
+    <div id="hud-street" class="street"><i>📍</i><span></span></div>
+    <div id="hud-place" class="place"><small>STAI PASSANDO VICINO A</small><span></span></div>
+    <div class="dash">
+      <div class="revs" id="hud-revs"></div>
+      <div class="dash-main">
+        <div class="dash-speed"><b id="hud-speed">0</b><small>KM/H</small></div>
+        <div class="dash-gear" id="hud-gear">N</div>
+        <div class="dash-pos" id="hud-pos-wrap"><small>POS</small><b id="hud-pos">1</b><span id="hud-pos-tot">/6</span></div>
+      </div>
+      <div class="dash-energy">
+        <div class="ers"><small>ERS</small><div class="ers-bar"><i id="hud-ers"></i></div></div>
+        <span id="flag-drs" class="drs">DRS</span>
+        <div class="tyre" id="hud-tyre"><i><b>S</b></i><span>100%</span></div>
+        <svg class="dmg" id="hud-dmg" viewBox="0 0 40 60" aria-label="Danni">
+          <rect class="w-l" x="21" y="3" width="15" height="5" rx="1.5" />
+          <rect class="w-r" x="4" y="3" width="15" height="5" rx="1.5" />
+          <rect class="body" x="16" y="8" width="8" height="44" rx="3" />
+          <rect class="s-l" x="28" y="12" width="7" height="11" rx="2" />
+          <rect class="s-r" x="5" y="12" width="7" height="11" rx="2" />
+          <rect class="wheel" x="28" y="40" width="8" height="13" rx="2" />
+          <rect class="wheel" x="4" y="40" width="8" height="13" rx="2" />
+        </svg>
+      </div>
+      <div class="dash-flags">
+        <span id="flag-tc">TC</span><span id="flag-abs">ABS</span><span id="flag-draft">SCIA</span><span id="flag-pit">BOX</span><span id="flag-fb">⟲ <b id="hud-fb">0</b></span>
+      </div>
+    </div>
+    <div id="hud-msg" class="msg"></div>
+    <div id="start-lights" class="start-lights hidden">
+      <i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div id="hud-pitstop" class="pitstop hidden"><small>PIT STOP</small><b>2.4</b></div>
+    <div id="hud-radio" class="radio"><small>RADIO SQUADRA</small><span></span></div>
+    <div class="hud-hint"><kbd>Esc</kbd> pausa · <kbd>Shift</kbd> ERS · <kbd>E</kbd> DRS · <kbd>P</kbd> box · <kbd>⌫</kbd> flashback</div>
+  </div>
+  <div id="touch" class="touch hidden"></div>
+
+  <!-- ============ REPLAY ============ -->
+  <div id="replay-bar" class="replay-bar hidden">
+    <span class="rec">● REPLAY</span>
+    <button id="rp-play" class="btn small">❚❚</button>
+    <button id="rp-speed" class="btn small">1×</button>
+    <input id="rp-seek" type="range" min="0" max="1" step="0.001" value="0" />
+    <button id="rp-prev" class="btn small">◀</button>
+    <b id="rp-car">Tu</b>
+    <button id="rp-next" class="btn small">▶</button>
+    <button id="rp-cam" class="btn small">🎥 TV</button>
+    <button id="rp-exit" class="btn small primary">Esci</button>
+  </div>
+
+  <!-- ============ PAUSE ============ -->
+  <section id="screen-pause" class="screen overlay hidden">
+    <div class="menu">
+      <div class="logo"><span>CITY</span><b>GP</b></div>
+      <h2>Pausa</h2>
+      <button id="btn-resume" class="btn primary wide">Riprendi</button>
+      <button id="btn-restart" class="btn wide">Ricomincia</button>
+      <button id="btn-to-setup" class="btn wide">Impostazioni gara</button>
+      <button class="btn wide" data-open-options>⚙ Opzioni e comandi</button>
+      <button class="btn wide" data-fullscreen>⛶ Schermo intero</button>
+      <button id="btn-to-map" class="btn ghost wide">Cambia circuito</button>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="screen-results" class="screen overlay hidden">
+    <div class="menu results-menu">
+      <h2 id="res-title">Risultati</h2>
+      <div id="podium" class="podium"></div>
+      <table id="res-table"></table>
+      <div id="res-champ"></div>
+      <div class="row gap wrap" id="res-buttons"></div>
+    </div>
+  </section>
+
+  <!-- ============ OPTIONS ============ -->
+  <section id="screen-options" class="screen overlay hidden">
+    <div class="menu options-menu">
+      <div class="opt-head"><h2>Opzioni</h2><button id="btn-opt-close" class="btn ghost small">Chiudi ✕</button></div>
+      <div class="tabs" id="opt-tabs">
+        <button data-tab="controls" class="on">Comandi</button>
+        <button data-tab="driving">Guida</button>
+        <button data-tab="graphics">Grafica</button>
+        <button data-tab="audio">Audio</button>
+      </div>
+      <div class="opt-body" id="opt-body"></div>
+    </div>
+  </section>
+
+  <!-- ============ PERSONAL RECORDS ============ -->
+  <section id="screen-records" class="screen overlay hidden">
+    <div class="menu results-menu">
+      <div class="opt-head"><h2 id="rec-title">Record</h2><button id="btn-rec-close" class="btn ghost small">Chiudi ✕</button></div>
+      <p id="rec-sub" class="muted"></p>
+      <table id="rec-table"></table>
+      <p id="rec-sectors" class="hint"></p>
+      <div class="row gap wrap">
+        <button id="btn-rec-race" class="btn primary grow">Corri su questo circuito →</button>
+        <button id="btn-rec-clear" class="btn ghost">Cancella tempi</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ INFO / CREDITS / PRIVACY ============ -->
+  <section id="screen-info" class="screen overlay hidden">
+    <div class="menu options-menu info-menu">
+      <div class="opt-head"><div class="logo"><span>CITY</span><b>GP</b></div><button id="btn-info-close" class="btn ghost small">Chiudi ✕</button></div>
+      <p>City GP trasforma le strade vere di qualsiasi città in un circuito cittadino. Versione <span id="info-version"></span>.</p>
+      <h3>Come si gioca</h3>
+      <p>Cerca una città, genera i circuiti, scegli quello che ti piace e premi <b>VIA!</b>. Tastiera, gamepad e comandi touch sono supportati; i tasti si cambiano in ⚙ Opzioni.</p>
+      <h3>Dati e crediti</h3>
+      <ul>
+        <li>Strade, edifici e luoghi: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">contributori di OpenStreetMap</a> (licenza ODbL), tramite Overpass API e Nominatim.</li>
+        <li>Immagini satellitari: Esri World Imagery — © Esri, Maxar, Earthstar Geographics e la comunità GIS.</li>
+        <li>Elevazione: AWS Terrain Tiles (Mapzen, dati SRTM, GMTED, ETOPO1 e altri).</li>
+        <li>Mappa: tile © OpenStreetMap; libreria <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> (BSD-2).</li>
+        <li>Grafica 3D: <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> (MIT). Carattere: Titillium Web (SIL Open Font License).</li>
+        <li>Auto, piste, suoni e texture sono generati dal gioco.</li>
+      </ul>
+      <h3>Privacy</h3>
+      <p>City GP non usa cookie, account, pubblicità né statistiche. Impostazioni, record e circuiti salvati restano solo in questo browser. Per costruire le piste il browser scarica dati pubblici dai servizi elencati sopra, che ricevono l'indirizzo IP come in qualsiasi visita web; le ricerche di città vengono inviate a Nominatim (OpenStreetMap). La voce della radio usa la sintesi vocale del sistema (alcuni browser usano voci online del proprio fornitore): se preferisci, in ⚙ Opzioni → Audio scegli “Solo testo”.</p>
+      <p class="hint">City GP è un progetto amatoriale indipendente, non affiliato né approvato da Formula 1, FIA o altri campionati.</p>
+      <div class="row gap wrap"><button id="btn-clear-data" class="btn ghost">Cancella tutti i dati salvati</button></div>
+    </div>
+  </section>
+
+  <!-- ============ FATAL ERROR ============ -->
+  <section id="fatal" class="screen overlay hidden">
+    <div class="menu">
+      <div class="logo"><span>CITY</span><b>GP</b></div>
+      <h2>Errore</h2>
+      <p></p>
+      <button class="btn primary wide" onclick="location.reload()">Ricarica</button>
+    </div>
+  </section>
+
+  <div id="rotate-hint" class="rotate-hint"><div>↻</div>Ruota il telefono in orizzontale per giocare</div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

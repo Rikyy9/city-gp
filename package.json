@@ -1,0 +1,21 @@
+{
+  "name": "city-gp",
+  "version": "1.0.0",
+  "description": "Gioco di corse nel browser su circuiti cittadini generati dalle strade vere (OpenStreetMap).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "zip": "vite build && cd dist && zip -qr ../city-gp-web.zip . && cd .. && echo 'Creato city-gp-web.zip'"
+  },
+  "dependencies": {
+    "@fontsource/titillium-web": "5.3.0",
+    "leaflet": "1.9.4",
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.4"
+  }
+}

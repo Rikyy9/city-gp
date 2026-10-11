@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff3b2f"/><stop offset="1" stop-color="#c00500"/></linearGradient>
+    <radialGradient id="bg" cx="0.5" cy="0.35" r="0.8"><stop offset="0" stop-color="#22140f"/><stop offset="1" stop-color="#0b0c10"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M120 330 C 95 250, 140 150, 230 140 C 300 132, 330 190, 385 175 C 430 163, 440 230, 410 270 C 380 312, 330 300, 300 340 C 270 380, 200 395, 160 380 C 140 372, 127 352, 120 330 Z"
+        fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M120 330 C 95 250, 140 150, 230 140 C 300 132, 330 190, 385 175 C 430 163, 440 230, 410 270 C 380 312, 330 300, 300 340 C 270 380, 200 395, 160 380 C 140 372, 127 352, 120 330 Z"
+        fill="none" stroke="#e10600" stroke-width="9" stroke-linejoin="round"/>
+  <g transform="translate(256 262) skewX(-12)">
+    <rect x="-112" y="-62" width="224" height="124" rx="10" fill="url(#r)"/>
+    <text x="0" y="40" text-anchor="middle" font-family="Helvetica Neue, Arial, sans-serif" font-weight="900" font-style="italic" font-size="118" fill="#fff">GP</text>
+  </g>
+  <rect x="236" y="120" width="40" height="40" fill="#ffd400" transform="rotate(8 256 140)"/>
+</svg>
